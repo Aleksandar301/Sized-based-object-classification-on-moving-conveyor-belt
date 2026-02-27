@@ -70,11 +70,11 @@ int pusher_selection = 0;
 
 int mavis_position_enc_high = 0;
 int mavis_position_enc_low = 0;
-std::mutex com_lock_dummy; // koristan ako vise threadova treba da komunicira sa hardverom konkurentno
+std::mutex com_lock_dummy; // useful if multiple threads need to communicate with hardware concurrently
 
-unsigned long foto_camera_distance = 3000; // udaljenost od photocell do kamere
+unsigned long foto_camera_distance = 3000; // distance from photocell to camera
 
-// ================== funkcija za klasifikaciju objekata ==================
+// ================== function for object classification ==================
 string classifyObjectsOnTrack(Mat& img, int min_area, int area_thresh) {
 	if (img.empty()) {
 		return "Unknown";
@@ -84,11 +84,11 @@ string classifyObjectsOnTrack(Mat& img, int min_area, int area_thresh) {
 	Mat gray;
 	cvtColor(img, gray, COLOR_BGR2GRAY);
 
-	// 2. blur (smanjuje sum)
+	// 2. blur (reduces noise)
 	Mat blur;
 	GaussianBlur(gray, blur, Size(5, 5), 0);
 
-	// 3. maska za traku (uzimamo donjih 2/3 slike kao traku, moze se podesiti)
+	// 3. mask for the track (taking the lower 2/3 of the image as the track, can be adjusted)
 	int x1 = 0;
 	int y1 = img.rows/ 3; 
 	int x2 = img.cols;
@@ -104,12 +104,12 @@ string classifyObjectsOnTrack(Mat& img, int min_area, int area_thresh) {
 	Mat mask;
 	threshold(gray_track, mask, 0, 255, THRESH_BINARY | THRESH_OTSU);
 
-	// 5. Morfolosko zatvaranje
+	// 5. Morphological closing
 	Mat closed;
 	Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(12, 12));
 	morphologyEx(mask, closed, MORPH_CLOSE, kernel);
 
-	// 6. Pronalaženje kontura
+	// 6. Finding contours
 	vector<vector<Point>> contours;
 	findContours(closed, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
@@ -120,7 +120,7 @@ string classifyObjectsOnTrack(Mat& img, int min_area, int area_thresh) {
 
 		string category = (area > area_thresh) ? "Big" : "Small";
 
-		// centroid i crtanje
+		// centroid and drawing
 		Moments M = moments(contours[i]);
 		if (M.m00 > 0) {
 			int cx = int(M.m10 / M.m00);
@@ -136,7 +136,7 @@ string classifyObjectsOnTrack(Mat& img, int min_area, int area_thresh) {
 	return "Unknown";
 }
 
-// ================== GLAVNI PROGRAM ==================
+// ================== MAIN PROGRAM ==================
 int main(int argc, char** argv)
 {
 	if (argc != 2)
@@ -188,7 +188,7 @@ int main(int argc, char** argv)
 		cout << "Camera Device Settings" << endl
 			<< "======================" << endl;
 
-		// GENICAM standard - definisanje parametara kamere
+		// GENICAM standard - defining camera parameters
 		CIntegerPtr width = nodemap.GetNode("Width");
 		CIntegerPtr height = nodemap.GetNode("Height");
 		CIntegerPtr offsetX(nodemap.GetNode("OffsetX"));
@@ -197,7 +197,7 @@ int main(int argc, char** argv)
 		CEnumerationPtr ExposureMode(nodemap.GetNode("ExposureMode"));
 		CFloatPtr ExposureTimeAbs(nodemap.GetNode("ExposureTimeAbs"));
 
-		// podesavanje ROI-ja
+		// setting ROI
 		int64_t newWidth = 1600;
 		int64_t newHeight = 1200;
 		offsetX->SetValue(0);
@@ -205,38 +205,38 @@ int main(int argc, char** argv)
 		width->SetValue(newWidth);
 		height->SetValue(newHeight);
 
-		TriggerMode->FromString("Off");// trigger je interni
-		ExposureMode->FromString("Timed");// trigger je odredjen internom vremenskom bazom
-		ExposureTimeAbs->SetValue(300);// vreme ekspozicije
+		TriggerMode->FromString("Off");// trigger is internal
+		ExposureMode->FromString("Timed");// trigger is determined by internal time base
+		ExposureTimeAbs->SetValue(300);// exposure time
 
-		// parametri koji odredjuju nacin akvizicije u kameri
+		// parameters determining the acquisition mode in the camera
 		camera.MaxNumBuffer = 1;
 		camera.OutputQueueSize = 1;
 		camera.StartGrabbing(GrabStrategy_UpcomingImage);
 
-		// inicijalizacija pocetka i kraja objekta 
+		// initialization of object beginning and end
 		mavis_obj_beginning_position = SortingLineGetObjectBeginningPosition(&com_lock_dummy);
 		mavis_obj_beginning_position_past = mavis_obj_beginning_position;
 		mavis_obj_end_position = SortingLineGetObjectEndPosition(&com_lock_dummy);
 		mavis_obj_end_position_past = mavis_obj_end_position;
-		serial.MavisSendComData(&com_lock_dummy, 23, 1);// INIT - ne dirati
-		serial.MavisSendComData(&com_lock_dummy, 7, 40);// neko podesavanje sortirne linije - ne dirati
-		serial.MavisSendComData(&com_lock_dummy, 5, 0);// neko podesavanje sortirne linije - ne dirati
-		serial.MavisSendComData(&com_lock_dummy, 26, 1);// #0-encoder feedback, 1- servo_feedback - ne dirati
-		serial.MavisSendComData(&com_lock_dummy, 25, 0);// tolerance - ne dirati
-		serial.MavisSendComData(&com_lock_dummy, 46, 1);// light on - ne dirati
-		serial.MavisSendComData(&com_lock_dummy, 13, 600);// pusher time - ne dirati
-		serial.MavisSendComData(&com_lock_dummy, 23, 10);// GO - ne dirati 
+		serial.MavisSendComData(&com_lock_dummy, 23, 1);// INIT - do not touch
+		serial.MavisSendComData(&com_lock_dummy, 7, 40);// some sorting line setting - do not touch
+		serial.MavisSendComData(&com_lock_dummy, 5, 0);// some sorting line setting - do not touch
+		serial.MavisSendComData(&com_lock_dummy, 26, 1);// #0-encoder feedback, 1- servo_feedback - do not touch
+		serial.MavisSendComData(&com_lock_dummy, 25, 0);// tolerance - do not touch
+		serial.MavisSendComData(&com_lock_dummy, 46, 1);// light on - do not touch
+		serial.MavisSendComData(&com_lock_dummy, 13, 600);// pusher time - do not touch
+		serial.MavisSendComData(&com_lock_dummy, 23, 10);// GO - do not touch 
 
 		while (camera.IsGrabbing())
 		{
-			mavis_position_enc = SortingLineGetCurrentPosition(&com_lock_dummy);// ocitavanje trenutne pozicije trake
+			mavis_position_enc = SortingLineGetCurrentPosition(&com_lock_dummy);// reading current belt position
 
-			// procesiranje signala photocell koji ukazuju na postojanje objekta
+			// processing photocell signals indicating object presence
 			if (scanning_status == OUT_OF_OBJECT) {
 				mavis_obj_beginning_position = SortingLineGetObjectBeginningPosition(&com_lock_dummy);
 				if (mavis_obj_beginning_position != mavis_obj_beginning_position_past) {
-					// pocetak novog objekta
+					// beginning of a new object
 					scanning_status = IN_OBJECT;
 					mavis_obj_beginning_position_past = mavis_obj_beginning_position;
 					cout << endl << "OBJECT BEGINNING AT " << mavis_obj_beginning_position << endl;
@@ -245,7 +245,7 @@ int main(int argc, char** argv)
 			else {// IN_OBJECT
 				mavis_obj_end_position = SortingLineGetObjectEndPosition(&com_lock_dummy);
 				if (mavis_obj_end_position != mavis_obj_end_position_past) {
-					// kraj novog objekta
+					// end of a new object
 					scanning_status = OUT_OF_OBJECT;
 					mavis_obj_end_position_past = mavis_obj_end_position;
 					SortingLineObject new_object;
@@ -256,7 +256,7 @@ int main(int argc, char** argv)
 				}
 			}
 
-			// ako postoji objekat, pozicioniramo kameru da ceka
+			// if an object exists, position the camera to wait
 			if (objects_queue.size() > 0) {
 				SortingLineObject new_object;
 				new_object = objects_queue.front();
@@ -279,8 +279,8 @@ int main(int argc, char** argv)
 					new_object = objects_queue.front();
 					mavis_obj_position_push = (new_object.beginning_position + new_object.end_position) / 2;
 
-					// ================== pusher izbor na osnovu klasifikacije ==================
-					// pusher_selection se vec postavlja unutar AcquireImage na osnovu klase objekta
+					// ================== pusher selection based on classification ==================
+					// pusher_selection is already set inside AcquireImage based on object class
 
 					switch (pusher_selection) {
 					case 0:
@@ -312,7 +312,7 @@ int main(int argc, char** argv)
 }
 
 
-// ================== FUNKCIJA ZA AKVIZICIJU ==================
+// ================== ACQUISITION FUNCTION ==================
 int AcquireImage(Camera_t* camera) {
 	CGrabResultPtr ptrGrabResult;
 	CPylonImage imagePylonTemp;
@@ -329,20 +329,20 @@ int AcquireImage(Camera_t* camera) {
 		fc.Convert(imagePylonTemp, ptrGrabResult);
 		rgbImageWithBackground = Mat(ptrGrabResult->GetHeight(), ptrGrabResult->GetWidth(), CV_8UC3, (uint8_t*)imagePylonTemp.GetBuffer());
 
-		// ================== klasifikacija objekta ==================
+		// ================== object classification ==================
 		string result = classifyObjectsOnTrack(rgbImageWithBackground, 20000, 200000);
 
 		if (result == "Big") {
-			pusher_selection = 2; // veliki ide na pusher 3
+			pusher_selection = 2; // big goes to pusher 3
 		}
 		else if (result == "Small") {
-			pusher_selection = 1; // mali ide na pusher 2
+			pusher_selection = 1; // small goes to pusher 2
 		}
 		else {
-			pusher_selection = 0; // nepoznato ide na pusher 1
+			pusher_selection = 0; // unknown goes to pusher 1
 		}
 
-		cout << "Detektovan objekat: " << result << " -> pusher_selection = " << pusher_selection << endl;
+		cout << "Detected object: " << result << " -> pusher_selection = " << pusher_selection << endl;
 
 		imshow("Display window FINAL", rgbImageWithBackground);
 	}
@@ -354,10 +354,10 @@ int AcquireImage(Camera_t* camera) {
 }
 
 
-// ================== OSTALE FUNKCIJE ==================
+// ================== OTHER FUNCTIONS ==================
 int SortingLineSetPosition(std::mutex* comm_lock, unsigned long position) {
-	serial.MavisSendComData(comm_lock, 30, (mavis_position >> 16) & 0xFFFF);// komanda koja postavlja visih 16 bita 32-bitne zadate pozicije
-	serial.MavisSendComData(comm_lock, 31, mavis_position & 0xFFFF);// komanda koja postavlja nizih 16 bita 32-bitne zadate pozicije
+	serial.MavisSendComData(comm_lock, 30, (mavis_position >> 16) & 0xFFFF);// command that sets the higher 16 bits of the 32-bit target position
+	serial.MavisSendComData(comm_lock, 31, mavis_position & 0xFFFF);// command that sets the lower 16 bits of the 32-bit target position
 	return 0;
 }
 
@@ -365,27 +365,27 @@ unsigned long SortingLineGetCurrentPosition(std::mutex* comm_lock) {
 	unsigned long mavis_position_enc;
 	int mavis_position_enc_high, mavis_position_enc_low;
 	int retval1, retval2;
-	retval1 = serial.MavisGetComData(comm_lock, 30, &mavis_position_enc_high);// komanda koja ocitava visih 16 bita 32-bitne trenutne pozicije
-	retval2 = serial.MavisGetComData(comm_lock, 31, &mavis_position_enc_low);// komanda koja ocitava nizih 16 bita 32-bitne trenutne pozicije
-	mavis_position_enc = (mavis_position_enc_high << 16) | mavis_position_enc_low;// trenutna 32-bitna pozicija trake
+	retval1 = serial.MavisGetComData(comm_lock, 30, &mavis_position_enc_high);// command that reads the higher 16 bits of the 32-bit current position
+	retval2 = serial.MavisGetComData(comm_lock, 31, &mavis_position_enc_low);// command that reads the lower 16 bits of the 32-bit current position
+	mavis_position_enc = (mavis_position_enc_high << 16) | mavis_position_enc_low;// current 32-bit belt position
 	return mavis_position_enc;
 }
 
 unsigned long SortingLineGetObjectBeginningPosition(std::mutex* comm_lock) {
 	unsigned long mavis_position_obj_start;
 	int mavis_position_enc_high, mavis_position_enc_low;
-	serial.MavisGetComData(comm_lock, 34, &mavis_position_enc_high);// komanda koja ocitava visih 16 bita 32-bitne pozicije pocetka objekta koji je detektovala photocell
-	serial.MavisGetComData(comm_lock, 35, &mavis_position_enc_low);// komanda koja ocitava nizih 16 bita 32-bitne pozicije pocetka objekta koji je detektovala photocell
-	mavis_position_obj_start = (mavis_position_enc_high << 16) | mavis_position_enc_low;// trenutna 32-bitna pozicija pocetka objekta
+	serial.MavisGetComData(comm_lock, 34, &mavis_position_enc_high);// command that reads the higher 16 bits of the 32-bit object beginning position detected by photocell
+	serial.MavisGetComData(comm_lock, 35, &mavis_position_enc_low);// command that reads the lower 16 bits of the 32-bit object beginning position detected by photocell
+	mavis_position_obj_start = (mavis_position_enc_high << 16) | mavis_position_enc_low;// current 32-bit object beginning position
 	return mavis_position_obj_start;
 }
 
 unsigned long SortingLineGetObjectEndPosition(std::mutex* comm_lock) {
 	unsigned long mavis_position_obj_stop;
 	int mavis_position_enc_high, mavis_position_enc_low;
-	serial.MavisGetComData(comm_lock, 36, &mavis_position_enc_high);// komanda koja ocitava visih 16 bita 32-bitne pozicije kraja objekta koji je detektovala photocell
-	serial.MavisGetComData(comm_lock, 37, &mavis_position_enc_low);// komanda koja ocitava nizih 16 bita 32-bitne pozicije kraja objekta koji je detektovala photocell
-	mavis_position_obj_stop = (mavis_position_enc_high << 16) | mavis_position_enc_low;// trenutna 32-bitna pozicija kraja objekta
+	serial.MavisGetComData(comm_lock, 36, &mavis_position_enc_high);// command that reads the higher 16 bits of the 32-bit object end position detected by photocell
+	serial.MavisGetComData(comm_lock, 37, &mavis_position_enc_low);// command that reads the lower 16 bits of the 32-bit object end position detected by photocell
+	mavis_position_obj_stop = (mavis_position_enc_high << 16) | mavis_position_enc_low;// current 32-bit object end position
 	return mavis_position_obj_stop;
 }
 
